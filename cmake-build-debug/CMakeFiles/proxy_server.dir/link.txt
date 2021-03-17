@@ -1,1 +1,0 @@
-/usr/bin/c++  -g   CMakeFiles/proxy_server.dir/proxy_server.cpp.o CMakeFiles/proxy_server.dir/Server.cpp.o CMakeFiles/proxy_server.dir/Client.cpp.o  -o proxy_server 
