@@ -10,19 +10,24 @@
 
 
 enum Stage{
-	rdy_send,
-	rdy_recv,
-	finish
+	recv_client_query, //read client request
+	send_db_resp, //send what mysql response
+	recv_db_resp, //recv mysql resp
+	send_client_resp, //send to mysql client's query
+	finish, //close connection
 };
 
 class Client{
 
 private:
-	int			cl_socket;
-	int 		host_socket;
+	int						cl_socket;
+	int 					host_socket;
 	std::string const 		host_ip;
 	std::string const 		host_port;
-	enum Stage	stage;
+	enum Stage				stage;
+	char					*body;
+	int 					body_len;
+
 
 public:
 	Client(int &, std::string const &, std::string const &);
@@ -30,8 +35,16 @@ public:
 
 	int const & getSocket() const { return cl_socket; }
 	Stage getStage() const { return stage; }
+	char const * getBody() const { return  body; }
+	int	const &	getDbSocket() const { return host_socket; }
+	void	setStage(Stage const & stg) { stage = stg; }
+	int const & getBodyLen() const { return body_len; }
+	int		buff_dup(char const *buf, const int & len);
+	void 	buff_clear();
 
-	void db_connect();
+	void	recv_db_response();
+	void	send_client_response();
+	void	db_connect();
 };
 
 

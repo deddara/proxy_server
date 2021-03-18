@@ -6,6 +6,7 @@ typedef struct	Server_info{
 	std::string port = "3306";
 	std::string serv_port = "3030";
 	std::string fname = "mysql.log";
+	int 		threads_num = 5;
 }				Server_info;
 
 void	check_argument(int i, int argc){
@@ -42,7 +43,10 @@ void		validate_params(int argc, char **argv, Server_info & server_info){
 			check_argument(i, argc);
 			server_info.fname = std::string(argv[i + 1]);
 		}
-
+		if (std::string(argv[i]) == "-t"){
+			check_argument(i, argc);
+			server_info.threads_num = std::stoi(argv[i + 1]); //better to check if not a num
+		}
 	}
 }
 
@@ -51,7 +55,7 @@ int		main(int argc, char **argv){
 	validate_params(argc, argv, server_info);
 
 	try {
-		Server server = Server(server_info.ip, server_info.port, server_info.serv_port, server_info.fname);
+		Server server = Server(server_info.ip, server_info.port, server_info.serv_port, server_info.fname, server_info.threads_num);
 		server.start();
 	}
 	catch (const char* msg){

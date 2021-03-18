@@ -1,9 +1,18 @@
 #include "Server.hpp"
 
-Server::Server(std::string & host_ip, std::string & port, std::string & serv_port, std::string & flog_name)\
-:host_ip(host_ip), host_port(port), serv_port(serv_port) ,flog_name(flog_name){}
+# define COM_QUERY 0x03
 
-Server::~Server() {}
+Server::Server(std::string & host_ip, std::string & port, std::string & serv_port, std::string & flog_name, int & th_num)\
+:host_ip(host_ip), host_port(port), serv_port(serv_port) ,flog_name(flog_name), th_num(th_num){
+	lfile = open(flog_name.c_str(), O_CREAT | O_TRUNC | O_WRONLY , 0644);
+}
+
+Server::~Server() {
+	for (auto client : clients)
+		delete client;
+	close(server_socket);
+	close(lfile);
+}
 
 void Server::create_socket() {
 	struct sockaddr_in	addr;
@@ -40,9 +49,17 @@ void Server::set_prepare() {
 	max_fd = server_socket;
 	for (auto client : clients){
 		FD_SET(client->getSocket(), &readset);
-//		if ((*it)->getResponse() && strlen((*it)->getResponse()->getStr())){
-//			FD_SET((*it)->getFd(), &writeset);
-//		}
+		if (client->getStage() == recv_db_resp) {
+			FD_SET(client->getDbSocket(), &readset);
+			max_fd = client->getDbSocket() > max_fd ? client->getDbSocket() : max_fd;
+		}
+		if (client->getStage() == send_client_resp){
+			FD_SET(client->getDbSocket(), &writeset);
+			max_fd = client->getDbSocket() > max_fd ? client->getDbSocket() : max_fd;
+		}
+		if (client->getStage() == send_db_resp) {
+			FD_SET(client->getSocket(), &writeset);
+		}
 		if (client->getSocket() > max_fd)
 			max_fd = client->getSocket();
 	}
@@ -53,20 +70,70 @@ void Server::new_connection() {
 
 	if ((accept_sock = accept(server_socket, nullptr, nullptr)) < 0)
 		throw "Accept connection error";
-	fcntl(accept_sock, F_SETFL, O_NONBLOCK);
 	clients.push_back(new Client(accept_sock, host_ip, host_port));
 }
 
+void Server::log_query(const char *buf, const int &buf_len) {
+	std::time_t now = std::time(NULL);
+	std::tm * ptm = std::localtime(&now);
+	char buffer[32];
+	std::strftime(buffer, 32, "[%d.%m.%Y %H:%M:%S] ", ptm);
+	write(lfile, buffer, strlen(buffer));
+	write(lfile, buf + 5, buf_len - 5);
+	write(lfile, "\n", 1);
+}
+
+void Server::recv_msg(Client * client) {
+	int buf_size = 2048;
+	int n;
+	char buff[buf_size];
+	bzero(&buff, buf_size);
+
+	n = recv(client->getSocket(), buff, buf_size, 0);
+
+	if (n <= 0)
+	{
+		client->setStage(finish);
+		return;
+	}
+
+	buff[n] = '\0';
+
+	if(client->buff_dup(buff, n))
+		throw "Buff append malloc failed";
+	if (buff[4] == COM_QUERY) {
+		log_query(buff, buf_size);
+	}
+	client->setStage(send_client_resp);
+}
+
+void Server::send_db_response(Client * client) {
+	send(client->getSocket(), client->getBody(), client->getBodyLen(), 0);
+	client->setStage(recv_client_query);
+	client->buff_clear();
+}
+
 void Server::serve_connections() {
-	for (auto client : clients) {
-		if (FD_ISSET(client->getSocket(), &readset)){
-			switch (client->getStage()){
-				case rdy_send:
+	for (auto client = clients.begin(); client != clients.end(); ++client) {
+		if (FD_ISSET((*client)->getSocket(), &readset) || FD_ISSET((*client)->getDbSocket(), &readset)\
+		|| FD_ISSET((*client)->getSocket(), &writeset) || FD_ISSET((*client)->getDbSocket(), &writeset)){
+			switch ((*client)->getStage()){
+				case recv_client_query:
+					recv_msg(*client);
 					break;
-				case rdy_recv:
+				case send_db_resp:
+					send_db_response(*client);
+					break;
+				case recv_db_resp:
+					(*client)->recv_db_response();
+					break;
+				case send_client_resp:
+					(*client)->send_client_response();
 					break;
 				case finish:
-					break;
+					delete *client;
+					clients.erase(client);
+					return;
 			}
 		}
 	}
