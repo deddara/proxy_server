@@ -26,6 +26,7 @@ void		validate_params(int argc, char **argv, Server_info & server_info){
 				"\t'-sp': server port to run. Default value: 3030\n"
 				"\t'-f': file name for log. Default name: 'mysql.log'\n"
 				"\t'-t': thread numbers. Default value: 5\n";
+				exit(0);
 		}
 		if (std::string(argv[i]) == "-ip"){
 			check_argument(i, argc);
@@ -60,6 +61,7 @@ int		main(int argc, char **argv){
 	}
 	catch (const char* msg){
 		std::cerr << msg;
+		return (1);
 	}
-
+	return (0);
 }

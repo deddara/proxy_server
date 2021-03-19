@@ -2,7 +2,7 @@
 
 
 Client::Client(int & cl_socket, std::string const & host_ip, std::string const & host_port) : cl_socket(cl_socket), host_ip(host_ip),\
-host_port(host_port), body(nullptr), body_len(0) {
+host_port(host_port), body(nullptr), body_len(0), in_process(0) {
 	db_connect();
 	stage = recv_db_resp;
 }
@@ -49,8 +49,7 @@ void Client::recv_db_response() {
 }
 
 void Client::send_client_response() {
-	int n;
-	n = send(host_socket, body, body_len, 0);
+	send(host_socket, body, body_len, 0);
 	stage = recv_db_resp;
 	buff_clear();
 }

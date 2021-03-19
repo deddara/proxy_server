@@ -5,6 +5,7 @@
 Server::Server(std::string & host_ip, std::string & port, std::string & serv_port, std::string & flog_name, int & th_num)\
 :host_ip(host_ip), host_port(port), serv_port(serv_port) ,flog_name(flog_name), th_num(th_num){
 	lfile = open(flog_name.c_str(), O_CREAT | O_TRUNC | O_WRONLY , 0644);
+	pipe(skip_select);
 }
 
 Server::~Server() {
@@ -12,6 +13,9 @@ Server::~Server() {
 		delete client;
 	close(server_socket);
 	close(lfile);
+	close(skip_select[0]);
+	close(skip_select[1]);
+	unlink("./temp_file");
 }
 
 void Server::create_socket() {
@@ -46,6 +50,7 @@ void Server::set_prepare() {
 	FD_ZERO(&readset);
 	FD_ZERO(&writeset);
 	FD_SET(server_socket, &readset);
+	FD_SET(skip_select[0], &readset);
 	max_fd = server_socket;
 	for (auto client : clients){
 		FD_SET(client->getSocket(), &readset);
@@ -113,35 +118,65 @@ void Server::send_db_response(Client * client) {
 	client->buff_clear();
 }
 
-void Server::serve_connections() {
+void Server::serve_connections(std::mutex & que_mutex) {
 	for (auto client = clients.begin(); client != clients.end(); ++client) {
-		if (FD_ISSET((*client)->getSocket(), &readset) || FD_ISSET((*client)->getDbSocket(), &readset)\
-		|| FD_ISSET((*client)->getSocket(), &writeset) || FD_ISSET((*client)->getDbSocket(), &writeset)){
-			switch ((*client)->getStage()){
-				case recv_client_query:
-					recv_msg(*client);
-					break;
-				case send_db_resp:
-					send_db_response(*client);
-					break;
-				case recv_db_resp:
-					(*client)->recv_db_response();
-					break;
-				case send_client_resp:
-					(*client)->send_client_response();
-					break;
-				case finish:
-					delete *client;
-					clients.erase(client);
-					return;
-			}
+		if ((*client)->getStage() == finish){
+			delete *client;
+			client = clients.erase(client);
+			if (client == clients.end())
+				break;
+		}
+
+		if ((FD_ISSET((*client)->getSocket(), &readset) || FD_ISSET((*client)->getDbSocket(), &readset)\
+		|| FD_ISSET((*client)->getSocket(), &writeset) || FD_ISSET((*client)->getDbSocket(), &writeset)) && !(*client)->getProcess()) {
+			que_mutex.lock();
+			clients_que.push((*client));
+			que_mutex.unlock();
 		}
 	}
 }
 
-void Server::start() {
-	create_socket();
+[[noreturn]] void worker(Server * server, std::mutex * mu) {
+	for(;;){
+		mu->lock();
+		if (!server->getClientsQue().empty()){
+			Client *client = server->getClientsQue().front();
+			server->getClientsQue().pop();
+			client->setProcess(1);
+			switch (client->getStage()){
+				case recv_client_query:
+					server->recv_msg(client);
+					break;
+				case send_db_resp:
+					server->send_db_response(client);
+					break;
+				case recv_db_resp:
+					client->recv_db_response();
+					break;
+				case send_client_resp:
+					client->send_client_response();
+					break;
+			}
+			client->setProcess(0);
+			write(server->getSelectSkipFile()[1], "1", 1);
+		}
+		mu->unlock();
+	}
+}
 
+void Server::start_threads(std::mutex & que_mutex) {
+	for (int i = 0; i < th_num; ++i){
+		std::thread wrk (worker, this, & que_mutex);
+		wrk.detach();
+	}
+}
+
+void Server::start() {
+	char		c;
+	std::mutex	que_mutex;
+
+	create_socket();
+	start_threads(que_mutex);
 	for (;;){
 		set_prepare();
 		if (select(max_fd + 1, &readset, &writeset, NULL, NULL) < 0)
@@ -149,6 +184,8 @@ void Server::start() {
 
 		if (FD_ISSET(server_socket, &readset))
 			new_connection();
-		serve_connections();
+		if (FD_ISSET(skip_select[0], &readset))
+			read(skip_select[0], &c, 1);
+		serve_connections(que_mutex);
 	}
 }

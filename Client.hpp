@@ -27,6 +27,7 @@ private:
 	enum Stage				stage;
 	char					*body;
 	int 					body_len;
+	int 					in_process;
 
 
 public:
@@ -38,7 +39,10 @@ public:
 	char const * getBody() const { return  body; }
 	int	const &	getDbSocket() const { return host_socket; }
 	void	setStage(Stage const & stg) { stage = stg; }
+	void	setProcess(int const &num) { in_process = num; }
+	int const & getProcess() const { return in_process; }
 	int const & getBodyLen() const { return body_len; }
+
 	int		buff_dup(char const *buf, const int & len);
 	void 	buff_clear();
 
