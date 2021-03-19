@@ -2,3 +2,4 @@ a.out
 cmake-build-debug
 .idea
 db_connection.php
+obj

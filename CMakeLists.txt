@@ -5,6 +5,6 @@ project(proxy_server)
 SET(CMAKE_CXX_FLAGS -pthread)
 
 add_executable(proxy_server
-        proxy_server.cpp
-        Server.cpp
-        Client.cpp)
+        ./src/proxy_server.cpp
+        ./src/Server.cpp
+        ./src/Client.cpp)
